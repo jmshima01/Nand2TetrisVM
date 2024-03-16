@@ -11,8 +11,7 @@ import (
 // ========== CONSTS/Globals ========================
 const POP string = "@SP\nAM=M-1\nD=M\n" 
 const PUSH string = "@SP\nAM=M+1\nA=A-1\nM=D\n"
-var fileName string= "" // for temp vars
-
+// var STACK []int = make([]int, 0)
 
 //  ============== File IO =======================
 func readLines(path string)[]string{
@@ -39,7 +38,7 @@ func writeToFile(path string,asm string){
 // ============ ASM CONVERSIONS ==================
 
 // convert pop to asm  |SET M to D from pop for the given seg offset|
-func translatePop(line []string)string{
+func translatePop(line []string, fileName string)string{
 	segment,v:= line[1],line[2]
 	offset,_ := strconv.Atoi(v)
 	result := fmt.Sprintf("\n// pop %s %d\n",segment,offset)
@@ -58,24 +57,24 @@ func translatePop(line []string)string{
 				os.Exit(1)
 			}
 		case "temp":
-			offset %= 8
+			
 			switch(offset){
-			case 0:
-				result+= POP + "@R5\nM=D\n"
-			case 1:
-				result+= POP + "@R6\nM=D\n"
-			case 2:
-				result+= POP + "@R7\nM=D\n"
-			case 3:
-				result+= POP + "@R8\nM=D\n"
-			case 4:
-				result+= POP + "@R9\nM=D\n"
-			case 5:
-				result+= POP + "@R10\nM=D\n"
-			case 6:
-				result+= POP + "@R11\nM=D\n"
-			case 7:
-				result+= POP + "@R12\nM=D\n"
+				case 0:
+					result+= POP + "@R5\nM=D\n"
+				case 1:
+					result+= POP + "@R6\nM=D\n"
+				case 2:
+					result+= POP + "@R7\nM=D\n"
+				case 3:
+					result+= POP + "@R8\nM=D\n"
+				case 4:
+					result+= POP + "@R9\nM=D\n"
+				case 5:
+					result+= POP + "@R10\nM=D\n"
+				case 6:
+					result+= POP + "@R11\nM=D\n"
+				case 7:
+					result+= POP + "@R12\nM=D\n"
 			default:
 				println("Syntax Error:",line)
 				os.Exit(1)
@@ -157,7 +156,7 @@ func translatePop(line []string)string{
 }
 
 // convert push to asm |SET D to RIGHT VALUE for pushing|!
-func translatePush(line []string)string{
+func translatePush(line []string, fileName string)string{
 	segment,v:= line[1],line[2]
 	offset,_ := strconv.Atoi(v)
 	result := fmt.Sprintf("\n// push %s %d\n",segment,offset)
@@ -167,7 +166,8 @@ func translatePush(line []string)string{
 			result += fmt.Sprintf("@%d\nD=A\n",offset)
 
 		case "static":
-			result += fmt.Sprintf("@%s.%d\nD=A\n",fileName,offset)
+			
+			result += fmt.Sprintf("@%s.%d\nD=M\n",fileName,offset)
 			
 		case "pointer":
 			if offset == 0{
@@ -179,27 +179,26 @@ func translatePush(line []string)string{
 				os.Exit(1)
 			}
 		case "temp":
-			offset %= 8
 			switch(offset){
-			case 0:
-				result+= POP + "@R5\nD=M\n"
-			case 1:
-				result+= POP + "@R6\nD=M\n"
-			case 2:
-				result+= POP + "@R7\nD=M\n"
-			case 3:
-				result+= POP + "@R8\nD=M\n"
-			case 4:
-				result+= POP + "@R9\nD=M\n"
-			case 5:
-				result+= POP + "@R10\nD=M\n"
-			case 6:
-				result+= POP + "@R11\nD=M\n"
-			case 7:
-				result+= POP + "@R12\nD=M\n"
-			default:
-				println("Syntax Error:",line)
-				os.Exit(1)
+				case 0:
+					result+="@R5\nD=M\n"
+				case 1:
+					result+="@R6\nD=M\n"
+				case 2:
+					result+="@R7\nD=M\n"
+				case 3:
+					result+="@R8\nD=M\n"
+				case 4:
+					result+="@R9\nD=M\n"
+				case 5:
+					result+="@R10\nD=M\n"
+				case 6:
+					result+="@R11\nD=M\n"
+				case 7:
+					result+="@R12\nD=M\n"
+				default:
+					println("Syntax Error:",line)
+					os.Exit(1)
 			}
 		
 		case "local":
@@ -283,10 +282,10 @@ func translateArith(line []string)string{
 		case "or":
 			result+=POP + "@R13\nM=D\n" + POP + "@R13\nD=D|M\n" + PUSH
 		case "lt":
-
 		case "gt":
 
 		case "eq":
+			result+= POP + "@R13\nM=D\n"
 			
 		case "not":
 			result+=POP +"D=!D\n" + PUSH
@@ -295,8 +294,6 @@ func translateArith(line []string)string{
 		default:
 			println("Syntax Error:",line)
 			os.Exit(1)
-
-		
 	}
 
 	return result
@@ -312,9 +309,11 @@ func main(){
 	}
 
 	lines:=readLines(args[1]) // read file by lines into array
-	fileName = strings.Split(args[1],".")[0] // foo.vm -> foo
+	filePath := strings.Split(args[1],".")[0] // ../../foo.vm -> ../../foo
+	name := strings.Split(filePath,"/")
+	fileName := name[len(name)-1] // ../../foo.vm -> foo (for static vars)
 	clean:= make([][]string,0)
-	fmt.Println(lines)
+	// fmt.Println(lines)
 	
 	// remove whitespace and comments un-needed
 	for _,v := range lines{
@@ -327,18 +326,15 @@ func main(){
 			clean = append(clean, strings.Fields(v))
 		}
 	}
-	fmt.Println()
-	fmt.Println(clean)
 
-	assembly,s := "",""
+	assembly,s := "@256\nD=A\n@SP\nM=D\n",""
 
 	// go thru data and convert each line into corresponding hack asm instrs
 	for _,v := range clean{
 		if v[0] == "push"{
-			s=translatePush(v)
-			fmt.Println(s)
+			s=translatePush(v,fileName)
 		} else if v[0] == "pop"{
-			s=translatePop(v)
+			s=translatePop(v,fileName)
 		} else{
 			s=translateArith(v)
 		}
@@ -346,6 +342,6 @@ func main(){
 	}
 
 	fmt.Println(assembly)
-	writeToFile(fmt.Sprintf("%s.asm",fileName),assembly)
+	writeToFile(fmt.Sprintf("%s.asm",filePath),assembly)
 	
 }
