@@ -11,7 +11,7 @@ import (
 // ========== CONSTS/Globals ========================
 const POP string = "@SP\nAM=M-1\nD=M\n" 
 const PUSH string = "@SP\nAM=M+1\nA=A-1\nM=D\n"
-// var STACK []int = make([]int, 0)
+var ifCounter int = 0
 
 //  ============== File IO =======================
 func readLines(path string)[]string{
@@ -33,7 +33,6 @@ func writeToFile(path string,asm string){
 		os.Exit(1)
 	}
 }
-
 
 // ============ ASM CONVERSIONS ==================
 
@@ -282,12 +281,22 @@ func translateArith(line []string)string{
 		case "or":
 			result+=POP + "@R13\nM=D\n" + POP + "@R13\nD=D|M\n" + PUSH
 		case "lt":
-			
-		case "gt":
+			result+=POP + "@R13\nM=D\n" + POP + "@R13\nD=D-M\n@"+fmt.Sprintf("if.%d\n",ifCounter) + "D;JLT\n"
+			result+= "// false block\n"	+ "D=0\n" + PUSH + fmt.Sprintf("@fi.%d\n",ifCounter) + "0;JMP\n"
+			result+= fmt.Sprintf("(if.%d)\n",ifCounter) + "D=-1\n" + PUSH + fmt.Sprintf("(fi.%d)\n",ifCounter)
+			ifCounter++
 
-		case "eq": // (A&B) | (A|B)!
-			result+= POP + "@R13\nM=D\n@R14\nM=D" + POP + "@R13\nM=D|M\nM=!M\n@R14\nM=D&M\nD=M\n@R13\nM=D|M\nD=M\n" + PUSH
-			
+		case "gt":
+			result+=POP + "@R13\nM=D\n" + POP + "@R13\nD=D-M\n@"+fmt.Sprintf("if.%d\n",ifCounter) + "D;JGT\n"
+			result+= "// false block\n"	+ "D=0\n" + PUSH + fmt.Sprintf("@fi.%d\n",ifCounter) + "0;JMP\n"
+			result+= fmt.Sprintf("(if.%d)\n",ifCounter) + "D=-1\n" + PUSH + fmt.Sprintf("(fi.%d)\n",ifCounter)
+			ifCounter++
+
+		case "eq": 
+			result+=POP + "@R13\nM=D\n" + POP + "@R13\nD=D-M\n@"+fmt.Sprintf("if.%d\n",ifCounter) + "D;JEQ\n"
+			result+= "// false block\n"	+ "D=0\n" + PUSH + fmt.Sprintf("@fi.%d\n",ifCounter) + "0;JMP\n"
+			result+= fmt.Sprintf("(if.%d)\n",ifCounter) + "D=-1\n" + PUSH + fmt.Sprintf("(fi.%d)\n",ifCounter)
+			ifCounter++
 		case "not":
 			result+=POP +"D=!D\n" + PUSH
 		case "neg":
@@ -296,6 +305,7 @@ func translateArith(line []string)string{
 			println("Syntax Error:",line)
 			os.Exit(1)
 	}
+
 
 	return result
 }
