@@ -1,9 +1,9 @@
 Golang
 
-I used the latest version go1.22.0+
+I used the latest version go1.22.1
 When running `go version` on Ubuntu you should see...
 
-`go version go1.22.0 linux/amd64`
+`go version go1.22.1 linux/amd64`
 
 My code should also work and compile for go1.18.1+ if you already have it installed (but no promises though)
 No external libs where used that shouldn't already be included
@@ -12,8 +12,8 @@ Offical way to install latest version:
 https://go.dev/doc/install
 
 Alternative way I installed Go on Ubuntu 22.04 if above doesn't work (Should work the same for 20.04 I use 22.04 for dev):
-`wget https://go.dev/dl/go1.22.0.linux-amd64.tar.gz`
-`sudo tar -xvf go1.22.0.linux-amd64.tar.gz -C /usr/local`
+`wget https://go.dev/dl/go1.22.1.linux-amd64.tar.gz`
+`sudo tar -xvf go1.22.1.linux-amd64.tar.gz -C /usr/local`
 `echo "export PATH=$PATH:/usr/local/go/bin" >> ~/.profile`
 `source ~/.profile`
 `go version`

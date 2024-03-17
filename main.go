@@ -315,7 +315,7 @@ func main(){
 	args := os.Args
 
 	if len(args) != 2{
-		println("Usage: ./vm_translator <vmfile>")
+		println("Usage: ./Virtual <vmfile>")
 		os.Exit(1)
 	}
 
@@ -354,5 +354,4 @@ func main(){
 
 	fmt.Println(assembly)
 	writeToFile(fmt.Sprintf("%s.asm",filePath),assembly)
-	
 }
