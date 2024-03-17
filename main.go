@@ -282,10 +282,11 @@ func translateArith(line []string)string{
 		case "or":
 			result+=POP + "@R13\nM=D\n" + POP + "@R13\nD=D|M\n" + PUSH
 		case "lt":
+			
 		case "gt":
 
-		case "eq":
-			result+= POP + "@R13\nM=D\n"
+		case "eq": // (A&B) | (A|B)!
+			result+= POP + "@R13\nM=D\n@R14\nM=D" + POP + "@R13\nM=D|M\nM=!M\n@R14\nM=D&M\nD=M\n@R13\nM=D|M\nD=M\n" + PUSH
 			
 		case "not":
 			result+=POP +"D=!D\n" + PUSH
