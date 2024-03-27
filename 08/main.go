@@ -7,10 +7,21 @@ import (
 	"strconv"
 	"regexp"
 )
+
+// -------------------
+// Nand2TetrisVM
+// takes in single .vm file path or dir containing .vm file(s)
+// and produces single hack .asm translation
+// @author James Shima
+// -------------------
+
+
 // ========== CONSTS/Globals ========================
 const POP string = "@SP\nAM=M-1\nD=M\n" 
 const PUSH string = "@SP\nAM=M+1\nA=A-1\nM=D\n"
 var ifCounter int = 0
+var returnCounter = 0
+
 //  ============== File IO =======================
 func readLines(path string)[]string{
 	f,err := os.ReadFile(path)
@@ -31,6 +42,15 @@ func writeToFile(path string,asm string){
 		os.Exit(1)
 	}
 }
+
+func isVMFile(f os.FileInfo) bool{
+	if f.IsDir() {return false}
+	ext := strings.Split(f.Name(),".")
+	if len(ext) == 1 {return false}
+	if ext[1] == "vm" {return true} else {return false}
+}
+
+
 // ============ ASM CONVERSIONS ==================
 // convert pop to asm  |SET M to D from pop for the given seg offset|
 func translatePop(line []string, fileName string)string{
@@ -257,7 +277,7 @@ func translatePush(line []string, fileName string)string{
 	return result
 }
 
-// convert arithm to asm
+// convert hack arithm to asm
 func translateArith(line []string)string{
 	if len(line) != 1{
 		fmt.Println("Syntax Error Arith to Long:",line)
@@ -302,20 +322,59 @@ func translateArith(line []string)string{
 	return result
 }
 
+// =========== Control Flow ================== 
+//*if !0 jumpto label else next instr
 func translateIfGoto(line []string) string{
 	result := "\n// if-goto " + line[1] + "\n"
 	result += POP + fmt.Sprintf("@%s\nD;JNE\n",line[1])
 	return result
 }
 
-func isVMFile(f os.FileInfo) bool{
-	if f.IsDir() {return false}
-	ext := strings.Split(f.Name(),".")
-	if len(ext) == 1 {return false}
-	if ext[1] == "vm" {return true} else {return false}
+// simple force jump to label in asm
+func translateGoto(line []string)string{
+	return fmt.Sprintf("\n// goto %s\n@%s\n0;JMP\n",line[1],line[1])
 }
 
+// makes basic (Label) in asm
+func translateLabel(line []string)string{
+	return fmt.Sprintf("(%s)\n",line[1])
+}
 
+// ============ Functions =================
+func translateFunctionHeader(line []string)string{
+	result:= "\n// func defn\n"
+	result += translateLabel(line)
+	localN,_ := strconv.Atoi(line[2])
+	for i:=0; i<localN; i++{
+		result+= "@0\nD=A\n"+PUSH
+	}
+	return result
+}
+
+func translateReturn(line []string)string{
+	result := ""
+	return result
+}
+
+func translateCall(line []string)string{
+	result := "\n// func call\n"
+	
+	result += fmt.Sprintf("@RET_ADDRESS_CALL_%d\nD=A",returnCounter) + PUSH
+	result += "@LCL\nD=A" + PUSH + "@ARG\nD=A" + PUSH + "@THIS\nD=A" + PUSH + "@THAT\nD=A" + PUSH
+	
+	argOffset,_ := strconv.Atoi(line[2])
+	argOffset+=5
+
+	result += "@SP\nD=M\n" + fmt.Sprintf("@%d\nD=D-A\n@LCL\nM=D",argOffset)
+
+	result += "@SP\nD=M\n@LCL\nM=D\n"
+	result += fmt.Sprintf("@%s\n",line[1])
+	result += fmt.Sprintf("(@RET_ADDRESS_CALL_%d)\n",returnCounter)
+	
+	returnCounter++
+	
+	return result
+}
 
 func main(){
 	args := os.Args
@@ -333,7 +392,7 @@ func main(){
 	}
 
 	// =============================
-	// GIVEN DIR W/ VM FILES INSIDE 
+	// GIVEN DIR W/ VM FILE(S) INSIDE 
 	// =============================
 	if arginfo.IsDir(){		
 		dir, err := os.ReadDir(args[1])
@@ -355,8 +414,7 @@ func main(){
 		if noVMfiles{
 			println("no vm files found in",args[1])
 		}
-
-
+	
 	// =============================
 	// SINGLE VM FILE GIVEN
 	// =============================
@@ -375,7 +433,6 @@ func main(){
 			}
 			v = strings.TrimSpace(v) // remove tabs and other annoying whitespace
 			remove,_ := regexp.MatchString("^//.*",v)
-			
 			if !remove{
 				r := strings.Fields(v)
 				res := make([]string,0)
@@ -387,7 +444,6 @@ func main(){
 					}
 					if notComment{
 						res = append(res, s)
-
 					}
 				} 
 				clean = append(clean, res)
@@ -396,39 +452,33 @@ func main(){
 		for _,v := range clean{
 			fmt.Println(v)
 		}
-		assembly,s := "@256\nD=A\n@SP\nM=D\n",""
 
-		// go thru data and convert each line into corresponding hack asm instrs
+		// init
+		assembly,s := "@256\nD=A\n@SP\nM=D\n",""
+		// go thru data and convert each line into corresponding hack asm instr(s)
 		for _,v := range clean{
 			if v[0] == "push"{
 				s=translatePush(v,fileName)
 			} else if v[0] == "pop"{
 				s=translatePop(v,fileName)
 			} else if v[0] == "call"{
-
+				s=translateCall(v)
 			} else if v[0] == "label"{
-				s=fmt.Sprintf("(%s)\n",v[1])
+				s=translateLabel(v)
 			} else if v[0] == "function"{
-
+				s=translateFunctionHeader(v)
 			} else if v[0] == "if-goto"{
 				s=translateIfGoto(v)	
 			} else if v[0] == "goto"{
-				s=fmt.Sprintf("\n// goto %s\n@%s\n0;JMP\n",v[1],v[1])
+				s=translateGoto(v)
 			} else if v[0] == "return"{
-
+				s=translateReturn(v)
 			} else{
 				s=translateArith(v)
 			}
 			assembly+=s
 		}
-
 		fmt.Println(assembly)
 		writeToFile(fmt.Sprintf("%s.asm",filePath),assembly)
 	}
-
-
-
-	
-
-
 }
