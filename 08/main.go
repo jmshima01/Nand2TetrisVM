@@ -351,30 +351,48 @@ func translateFunctionHeader(line []string)string{
 	return result
 }
 
-func translateReturn(line []string)string{
-	result := ""
+func translateReturn()string{
+	result:= "// RETURN\n"
+	result += POP+"@ARG\nA=M\nM=D\n" // pop *ARG
+	result += "D=A\n@SP\nM=D+1\n" // SP = ARG+1
+
+	// get caller frame
+	result += "@LCL\nD=M\n@R14\nAM=D-1\nD=M\n@THAT\nM=D\n"
+	result += "@R14\nAM=M-1\nD=M\n@THIS\nM=D\n"
+	result += "@R14\nAM=M-1\nD=M\n@ARG\nM=D\n"
+	result += "@R14\nAM=M-1\nD=M\n@LCL\nM=D\n"
+	result += "@R14\nAM=M-1\nD=M\n@R13\nM=D\n"
+	
+	result += "@R13\nA=M\n0;JMP\n" // goto ret addr
 	return result
 }
 
 func translateCall(line []string)string{
 	result := "\n// func call\n"
+	argNum,_ := strconv.Atoi(line[2])
+	result += fmt.Sprintf("@RET_ADDRESS_CALL_%d\nD=A\n",returnCounter) + PUSH
+	result += "@LCL\nD=M\n" + PUSH + "@ARG\nD=M\n" + PUSH + "@THIS\nD=M\n" + PUSH + "@THAT\nD=M\n" + PUSH
 	
-	result += fmt.Sprintf("@RET_ADDRESS_CALL_%d\nD=A",returnCounter) + PUSH
-	result += "@LCL\nD=A" + PUSH + "@ARG\nD=A" + PUSH + "@THIS\nD=A" + PUSH + "@THAT\nD=A" + PUSH
-	
-	argOffset,_ := strconv.Atoi(line[2])
-	argOffset+=5
+	argNum+=5
 
-	result += "@SP\nD=M\n" + fmt.Sprintf("@%d\nD=D-A\n@LCL\nM=D",argOffset)
+	result += "@SP\nD=M\n" + fmt.Sprintf("@%d\nD=D-A\n@ARG\nM=D\n@SP\nD=M\n@LCL\nM=D\n",argNum)
 
-	result += "@SP\nD=M\n@LCL\nM=D\n"
-	result += fmt.Sprintf("@%s\n",line[1])
-	result += fmt.Sprintf("(@RET_ADDRESS_CALL_%d)\n",returnCounter)
+	result += fmt.Sprintf("@%s\n0;JMP\n",line[1])
+	result += fmt.Sprintf("(RET_ADDRESS_CALL_%d)\n",returnCounter)
 	
 	returnCounter++
 	
 	return result
 }
+
+func bootstrap(filename string)string{
+	result := "// " + filename + ".asm\n"	
+	result += "@256\nD=A\n@SP\nM=D\n"
+	inp := []string{"call","Sys.init","0"}
+	result += translateCall(inp)
+	return result
+}
+
 
 func main(){
 	args := os.Args
@@ -454,7 +472,8 @@ func main(){
 		}
 
 		// init
-		assembly,s := "@256\nD=A\n@SP\nM=D\n",""
+		// assembly,s := "@256\nD=A\n@SP\nM=D\n",""
+		assembly,s := bootstrap(fileName),""
 		// go thru data and convert each line into corresponding hack asm instr(s)
 		for _,v := range clean{
 			if v[0] == "push"{
@@ -472,7 +491,7 @@ func main(){
 			} else if v[0] == "goto"{
 				s=translateGoto(v)
 			} else if v[0] == "return"{
-				s=translateReturn(v)
+				s=translateReturn()
 			} else{
 				s=translateArith(v)
 			}
