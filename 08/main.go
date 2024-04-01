@@ -21,13 +21,13 @@ const POP string = "@SP\nAM=M-1\nD=M\n"
 const PUSH string = "@SP\nAM=M+1\nA=A-1\nM=D\n"
 var ifCounter int = 0
 var returnCounter = 0
+var currFunc string = ""
 
 //  ============== File IO =======================
 func readLines(path string)[]string{
 	f,err := os.ReadFile(path)
 	if err!=nil{
-		println("error reading",path)
-		os.Exit(1)
+		panic(err)
 	}
 	data:=string(f)
 	data = strings.ReplaceAll(data,"\r\n","\n")
@@ -38,8 +38,7 @@ func readLines(path string)[]string{
 func writeToFile(path string,asm string){
 	err := os.WriteFile(path,[]byte(asm),0644)
 	if err != nil{
-		println("error reading",path)
-		os.Exit(1)
+		panic(err)
 	}
 }
 
@@ -179,7 +178,7 @@ func translatePush(line []string, fileName string)string{
 			result += fmt.Sprintf("@%d\nD=A\n",offset)
 
 		case "static":
-			
+			// TODO: fix this for multiple files
 			result += fmt.Sprintf("@%s.%d\nD=M\n",fileName,offset)
 			
 		case "pointer":
@@ -301,7 +300,7 @@ func translateArith(line []string)string{
 			ifCounter++
 
 		case "gt":
-			result+=POP + "@R13\nM=D\n" + POP + "@R13\nD=D-regexp\n@"+fmt.Sprintf("if.%d\n",ifCounter) + "D;JGT\n"
+			result+=POP + "@R13\nM=D\n" + POP + "@R13\nD=D-M\n@"+fmt.Sprintf("if.%d\n",ifCounter) + "D;JGT\n"
 			result+= "// false block\n"	+ "D=0\n" + PUSH + fmt.Sprintf("@fi.%d\n",ifCounter) + "0;JMP\n"
 			result+= fmt.Sprintf("(if.%d)\n",ifCounter) + "D=-1\n" + PUSH + fmt.Sprintf("(fi.%d)\n",ifCounter)
 			ifCounter++
@@ -353,7 +352,8 @@ func translateFunctionHeader(line []string)string{
 
 func translateReturn()string{
 	result:= "// RETURN\n"
-	result += POP+"@ARG\nA=M\nM=D\n" // pop *ARG
+	result += "@5\nD=A\n@LCL\nA=M-D\nD=M\n@R13\nM=D\n@SP\nAM=M-1\nD=M\n" // ret addr
+	result += "@ARG\nA=M\nM=D\n" // pop *ARG
 	result += "D=A\n@SP\nM=D+1\n" // SP = ARG+1
 
 	// get caller frame
@@ -361,7 +361,6 @@ func translateReturn()string{
 	result += "@R14\nAM=M-1\nD=M\n@THIS\nM=D\n"
 	result += "@R14\nAM=M-1\nD=M\n@ARG\nM=D\n"
 	result += "@R14\nAM=M-1\nD=M\n@LCL\nM=D\n"
-	result += "@R14\nAM=M-1\nD=M\n@R13\nM=D\n"
 	
 	result += "@R13\nA=M\n0;JMP\n" // goto ret addr
 	return result
@@ -394,6 +393,108 @@ func bootstrap(filename string)string{
 }
 
 
+func handleSingleFile(filepth string)([]string,string,string){
+	lines := readLines(filepth)
+	filePath := strings.Split(filepth,".")[0] // ../../foo.vm -> ../../foo
+	name := strings.Split(filePath,"/")
+	fileName := name[len(name)-1] // ../../foo.vm -> foo (for static vars)
+	
+	return lines,filePath,fileName
+}
+
+func handleDir(dirPath string)([][]string,string,[]string){
+	dir, err := os.ReadDir(dirPath)
+	if err != nil{
+		panic(err)
+	}
+
+	// fmt.Println(dir)
+	noVMfiles := true
+	lines := make([][]string,0)
+	fileNames := make([]string,0)
+	for _,v := range dir{
+		info,_ := v.Info()
+		if isVMFile(info){
+			l,_,_ := handleSingleFile(fmt.Sprintf("%s/%s",dirPath,v.Name()))
+			fileNames = append(fileNames,strings.Split(v.Name(),".")[0])
+			lines = append(lines,l)
+			fmt.Println(v.Name())
+			noVMfiles = false
+		}
+	}
+	if noVMfiles{
+		println("no vm files found in",dir)
+	}
+	// fmt.Println(dirPath)
+	name := strings.Split(dirPath,"/")
+	finalName := name[len(name)-1]
+	finalPath := dirPath+"/"+finalName
+	return lines,finalPath,fileNames
+
+}
+
+
+func assemble(lines []string, fileName string)string{
+	clean:= make([][]string,0)
+	for _,v := range lines{
+		if len(v)==0{
+			continue
+		}
+		v = strings.TrimSpace(v) // remove tabs and other annoying whitespace
+		remove,_ := regexp.MatchString("^//.*",v)
+		if !remove{
+			r := strings.Fields(v)
+			res := make([]string,0)
+			notComment := true
+			// remove same line comments
+			for _,s := range r{
+				if s == "//"{
+					notComment = false
+				}
+				if notComment{
+					res = append(res, s)
+				}
+			} 
+			clean = append(clean, res)
+		}
+	}
+	for _,v := range clean{
+		fmt.Println(v)
+	}
+
+	// init
+	// assembly,s := "@256\nD=A\n@SP\nM=D\n",""
+	assembly,s := "",""
+	// go thru data and convert each line into corresponding hack asm instr(s)
+	for _,v := range clean{
+		if v[0] == "push"{
+			s=translatePush(v,fileName)
+		} else if v[0] == "pop"{
+			s=translatePop(v,fileName)
+		} else if v[0] == "call"{
+			s=translateCall(v)
+		} else if v[0] == "label"{
+			s=translateLabel(v)
+		} else if v[0] == "function"{
+			s=translateFunctionHeader(v)
+		} else if v[0] == "if-goto"{
+			s=translateIfGoto(v)	
+		} else if v[0] == "goto"{
+			s=translateGoto(v)
+		} else if v[0] == "return"{
+			s=translateReturn()
+		} else{
+			s=translateArith(v)
+		}
+		assembly+=s
+	}
+	fmt.Println(assembly)
+	return assembly
+}
+
+
+
+
 func main(){
 	args := os.Args
 	if len(args)!= 2{
@@ -405,99 +506,31 @@ func main(){
 	
 	arginfo,err := os.Stat(args[1])
 	if err != nil{
-		println("stat failed",err)
-		os.Exit(1)
+		panic(err)
 	}
+	lines,filePath, fileName:= [][]string{},"",""
+	singleFileLines := []string{}
+	res := bootstrap(args[1])
+	fileNames := make([]string, 0)
 
 	// =============================
 	// GIVEN DIR W/ VM FILE(S) INSIDE 
 	// =============================
-	if arginfo.IsDir(){		
-		dir, err := os.ReadDir(args[1])
-		if err != nil{
-			println("error reading dir",args[1])
-			os.Exit(1)
-		}
-
-		fmt.Println(dir)
-		noVMfiles := true
-		
-		for _,v := range dir{
-			info,_ := v.Info()
-			if isVMFile(info){
-				fmt.Println(v.Name())
-				noVMfiles = false
-			}
-		}
-		if noVMfiles{
-			println("no vm files found in",args[1])
+	
+	if arginfo.IsDir(){	
+		lines,filePath,fileNames = handleDir(args[1])
+		for i,v := range lines{
+			res += assemble(v,fileNames[i])
 		}
 	
 	// =============================
 	// SINGLE VM FILE GIVEN
 	// =============================
 	} else{
-		lines := readLines(args[1])
-		filePath := strings.Split(args[1],".")[0] // ../../foo.vm -> ../../foo
-		name := strings.Split(filePath,"/")
-		fileName := name[len(name)-1] // ../../foo.vm -> foo (for static vars)
-		clean:= make([][]string,0)
-		fmt.Println(lines)
-		
-		// remove whitespace and comments un-needed
-		for _,v := range lines{
-			if len(v)==0{
-				continue
-			}
-			v = strings.TrimSpace(v) // remove tabs and other annoying whitespace
-			remove,_ := regexp.MatchString("^//.*",v)
-			if !remove{
-				r := strings.Fields(v)
-				res := make([]string,0)
-				notComment := true
-				// remove same line comments
-				for _,s := range r{
-					if s == "//"{
-						notComment = false
-					}
-					if notComment{
-						res = append(res, s)
-					}
-				} 
-				clean = append(clean, res)
-			}
-		}
-		for _,v := range clean{
-			fmt.Println(v)
-		}
-
-		// init
-		// assembly,s := "@256\nD=A\n@SP\nM=D\n",""
-		assembly,s := bootstrap(fileName),""
-		// go thru data and convert each line into corresponding hack asm instr(s)
-		for _,v := range clean{
-			if v[0] == "push"{
-				s=translatePush(v,fileName)
-			} else if v[0] == "pop"{
-				s=translatePop(v,fileName)
-			} else if v[0] == "call"{
-				s=translateCall(v)
-			} else if v[0] == "label"{
-				s=translateLabel(v)
-			} else if v[0] == "function"{
-				s=translateFunctionHeader(v)
-			} else if v[0] == "if-goto"{
-				s=translateIfGoto(v)	
-			} else if v[0] == "goto"{
-				s=translateGoto(v)
-			} else if v[0] == "return"{
-				s=translateReturn()
-			} else{
-				s=translateArith(v)
-			}
-			assembly+=s
-		}
-		fmt.Println(assembly)
-		writeToFile(fmt.Sprintf("%s.asm",filePath),assembly)
+		singleFileLines,filePath,fileName = handleSingleFile(args[1])
+		res += assemble(singleFileLines,fileName)
 	}
+	fmt.Println(lines,filePath, fileName)
+	out := fmt.Sprintf("%s.asm",filePath)
+	writeToFile(out,res)
 }

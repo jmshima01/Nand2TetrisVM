@@ -158,6 +158,13 @@ AM=M+1
 A=A-1
 M=D
 // RETURN
+@5
+D=A
+@LCL
+A=M-D
+D=M
+@R13
+M=D
 @SP
 AM=M-1
 D=M
@@ -188,11 +195,6 @@ M=D
 AM=M-1
 D=M
 @LCL
-M=D
-@R14
-AM=M-1
-D=M
-@R13
 M=D
 @R13
 A=M
