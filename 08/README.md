@@ -9,7 +9,6 @@
 `./VMTranslator <path/to/dir>`\
 or\
 `./VMTranslator <path/to/single/vm/file>`\
-
 example:
 `./VMTranslator tests/FunctionCalls/StaticsTest` will create `StaticsTest.asm` in the same dir as the path provided.\
 For issues email: jamesshima@mines.edu
